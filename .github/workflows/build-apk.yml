@@ -24,7 +24,7 @@ jobs:
           java-version: '21'
 
       - name: Install Capacitor dependencies
-        run: npm install @capacitor/core @capacitor/cli @capacitor/android
+        run: npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor-community/admob
 
       - name: Build Web App
         run: npm run build
@@ -43,6 +43,12 @@ jobs:
 
       - name: Copy google-services.json
         run: cp google-services.json android/app/google-services.json
+
+      - name: Add AdMob App ID to AndroidManifest
+        run: |
+          cd android/app/src/main
+          sed -i '/<application/i \        <meta-data\n            android:name="com.google.android.gms.ads.APPLICATION_ID"\n            android:value="ca-app-pub-5959908767381687~7506133039"/>' AndroidManifest.xml
+          cd -
 
       - name: Sync Capacitor
         run: npx cap sync android
