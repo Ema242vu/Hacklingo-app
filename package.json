@@ -1,0 +1,26 @@
+{
+  "name": "hacklingo-anime-duolingo",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "cap:init": "npx cap init HackLingo com.hacklingo.app --web-dir=dist",
+    "cap:add": "npx cap add android",
+    "cap:build": "npm run build && npx cap sync && cd android && ./gradlew assembleDebug",
+    "apk": "npm run cap:build"
+  },
+  "dependencies": {
+    "@capacitor-community/admob": "^8.2.1",
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0",
+    "firebase": "^13.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0"
+  }
+}
