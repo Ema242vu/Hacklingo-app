@@ -1,6 +1,6 @@
 {
   "appId": "com.hacklingo.app",
-  "appName": "HackLingo Nova",
+  "appName": "HackLingo",
   "webDir": "dist",
   "plugins": {
     "AdMob": {

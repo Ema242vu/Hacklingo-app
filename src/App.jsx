@@ -5,6 +5,8 @@ import { AdMob, RewardAdPluginEvents } from '@capacitor-community/admob';
 
 const MEDIA='/media/gk/';
 const ADMOB_REWARD_ID = 'ca-app-pub-5959908767381687/3537670693';
+const ADMOB_APP_ID = 'ca-app-pub-5959908767381687~7506133039';
+
 const courses=[
 {id:'python',name:'Python Mastery',short:'PYTHON',emoji:'🐍',color:'#68a7ff',desc:'De cero a automatizar tareas con código.',level:'Principiante → Pro',topics:['Variables y print','Tipos de datos','Condicionales','Bucles for','Bucles while','Funciones','Listas','Diccionarios','Strings avanzados','Excepciones','Archivos','Clases y objetos','Herencia','Módulos','Requests','Sockets','Regex','JSON','CSV','Automatización']},
 {id:'hacking',name:'Hacking Ético',short:'CYBERSEC',emoji:'🛡️',color:'#61e6b5',desc:'Reconocimiento, seguridad web y defensa responsable.',level:'Intermedio',topics:['Footprinting','Nmap básico','Nmap avanzado','Enumeración','Vulnerabilidades web','SQL Injection','XSS','CSRF','Metasploit','Payloads','Wireshark','MITM','Criptografía','Hashing','Fuerza bruta','Privilege escalation','Post-explotación','Ingeniería social','Reportes','Bug Bounty']},
@@ -250,8 +252,8 @@ function App(){
  const [storyRoute,setStoryRoute]=useState([]);
  const [mood,setMood]=useState('image');
  const [activeWaifu,setActiveWaifu]=useState('akari');
-  const [bond,setBond]=useState(()=>safeRead('hl_nova_bond',{akari:12,yuki:8,prime:0,shadow:0}));
-  useEffect(()=>{safeWrite('hl_nova_bond',bond)},[bond]);
+ const [bond,setBond]=useState(()=>safeRead('hl_nova_bond',{akari:12,yuki:8,prime:0,shadow:0}));
+ useEffect(()=>{safeWrite('hl_nova_bond',bond)},[bond]);
  const [search,setSearch]=useState('');
  const [toast,setToast]=useState('');
  const [tab,setTab]=useState('Todos');
@@ -270,20 +272,34 @@ function App(){
    return () => unsubscribe();
  }, []);
 
- // AdMob init
+ // AdMob init: RETRASADO 1.5s + isTesting + try/catch en todos lados
  useEffect(()=>{
    let mounted = true;
+   let timer = null;
    const initAdMob = async () => {
      try {
-       await AdMob.initialize({requestTrackingAuthorization:true, testingDevices:[]});
-       if(mounted) setAdmobReady(true);
-       try { await AdMob.prepareRewardVideoAd({adId: ADMOB_REWARD_ID}); } catch(e) {}
+       // 1) Inicializar con opciones mínimas (sin requestTrackingAuthorization que es iOS-only)
+       await AdMob.initialize({
+         initializeForTesting: false
+       });
+       if(!mounted) return;
+       setAdmobReady(true);
+       // 2) Precargar un reward de prueba con isTesting: true
+       try {
+         await AdMob.prepareRewardVideoAd({
+           adId: ADMOB_REWARD_ID,
+           isTesting: true
+         });
+       } catch(e) {
+         console.warn('[AdMob] No se pudo precargar reward:', e?.message || e);
+       }
      } catch(e) {
-       console.log('AdMob no disponible:', e);
+       console.warn('[AdMob] init falló (la app sigue funcionando):', e?.message || e);
      }
    };
-   initAdMob();
-   return () => { mounted = false; };
+   // Retrasamos 1.5s para que la WebView esté completamente montada
+   timer = setTimeout(initAdMob, 1500);
+   return () => { mounted = false; if(timer) clearTimeout(timer); };
  }, []);
 
  useEffect(()=>{safeWrite('hl_nova_progress',progress)},[progress]);
@@ -368,28 +384,32 @@ function App(){
    showToast('Misión diaria: +50 XP, +20 monedas y +10 corazones ❤️');
  }
 
+ // AdMob reward: robusto con fallback siempre
  async function watchAdForHearts(){
    if(isPremium){ playSound('levelup'); showToast('Eres Premium: corazones ilimitados 👑'); return; }
    if(progress.hearts >= 10){ showToast('Ya tienes el máximo de corazones (10) ❤️'); return; }
    playSound('tap');
+   // Fallback inmediato si AdMob no está listo
+   if(!admobReady){
+     setProgress(p=>({...p,hearts:Math.min(10,(p.hearts||0)+5)}));
+     playSound('levelup');
+     showToast('+5 corazones ❤️ (modo prueba)');
+     return;
+   }
    showToast('Cargando anuncio... 📺');
    try {
-     await AdMob.prepareRewardVideoAd({ adId: ADMOB_REWARD_ID });
+     await AdMob.prepareRewardVideoAd({ adId: ADMOB_REWARD_ID, isTesting: true });
      await AdMob.showRewardVideoAd();
      playSound('levelup');
      setProgress(p=>({...p,hearts:Math.min(10,(p.hearts||0)+5)}));
      showToast('¡+5 corazones! ❤️ Gracias por ver el anuncio');
-     try { await AdMob.prepareRewardVideoAd({ adId: ADMOB_REWARD_ID }); } catch(e) {}
+     // Precargar el siguiente en background
+     try { await AdMob.prepareRewardVideoAd({ adId: ADMOB_REWARD_ID, isTesting: true }); } catch(e) {}
    } catch(e) {
-     console.log('AdMob error:', e);
-     if(!admobReady){
-       setProgress(p=>({...p,hearts:Math.min(10,(p.hearts||0)+5)}));
-       playSound('levelup');
-       showToast('Modo prueba: +5 corazones ❤️ (AdMob no disponible)');
-     } else {
-       playSound('wrong');
-       showToast('Anuncio no disponible. Intenta más tarde.');
-     }
+     console.warn('[AdMob] reward falló, dando corazones igual:', e?.message || e);
+     setProgress(p=>({...p,hearts:Math.min(10,(p.hearts||0)+5)}));
+     playSound('levelup');
+     showToast('+5 corazones ❤️ (fallback)');
    }
  }
 
@@ -515,7 +535,6 @@ function App(){
   {activeCourse&&<div className="section-block lesson-list-block"><div className="section-heading"><div><div className="eyebrow">PLAN DE ESTUDIO</div><h2>{course.name} <span className="count-pill">{course.topics.length} módulos</span></h2></div><span className="muted">{course.topics.filter((_,i)=>completed.has(course.id+'-'+i)).length} completados</span></div><div className="lesson-list">{course.topics.map((t,i)=>{let done=completed.has(course.id+'-'+i);return <button key={t} className="lesson-row" onClick={()=>startLesson(course.id,i)}><span className={'lesson-number '+(done?'is-done':'')}>{done?'✓':String(i+1).padStart(2,'0')}</span><span className="lesson-row-info"><b>{t}</b><small>{done?'Lección completada':'Concepto + ejemplo + reto rápido'}</small></span><span className="lesson-xp">+25 XP</span><span className="continue-arrow">↗</span></button>})}</div></div>}</div>}
   {(page==='lesson'||page==='course-detail')&&<div className="page-enter lesson-page"><button className="back-link" onClick={()=>navigate('courses')}>← Volver a las rutas</button><div className="lesson-layout"><section className="lesson-main panel"><div className="lesson-topline"><span className="course-label" style={{color:course.color}}>{course.emoji} {course.name.toUpperCase()}</span><span className="lesson-counter">LECCIÓN {lessonIndex+1} / {course.topics.length}</span></div><div className="lesson-progress"><i style={{width:(lessonIndex+1)/course.topics.length*100+'%'}}/></div><h1>{lesson}</h1><p className="muted">{info[0]}</p><div className="concept-box"><div className="concept-heading"><span>✦</span><b>CONCEPTO CLAVE</b></div><p>{info[0]}</p></div><div className="code-box"><div className="code-top"><span><i></i><i></i><i></i></span><small>ejemplo_practico</small><button onClick={()=>{navigator.clipboard?.writeText(info[1].replace(/\\n/g,'\n'));showToast('Ejemplo copiado')}}>Copiar código ⧉</button></div><pre>{info[1].replace(/\\n/g,'\n')}</pre></div><div className="tip-box"><span>💡</span><p><b>Consejo de Akari</b><br/>{info[2]}</p></div><div className="quiz-box"><div className="quiz-kicker">CHECKPOINT · 1 PREGUNTA</div><h2>{quiz[2]}</h2><div className="answer-list">{quiz[3].map((a,i)=><button key={a} disabled={!!feedback} className={'answer-option '+(selected===i?(i===quiz[4]?'answer-correct':'answer-wrong'):'')+((feedback&&i===quiz[4])?' answer-correct':'')} onClick={()=>answerQuiz(i)}><span>{String.fromCharCode(65+i)}</span>{a}{feedback&&i===quiz[4]&&<b className="answer-mark">✓</b>}{selected===i&&feedback==='wrong'&&<b className="answer-mark">×</b>}</button>)}</div>{showExplanation&&<div className={'feedback-box '+(feedback==='correct'?'good':'bad')}><b>{feedback==='correct'?'¡Correcto! +25 XP':'Casi, sigue aprendiendo'}</b><p>{quiz[5]}</p><button className="btn primary small-btn" onClick={nextLesson}>{lessonIndex===course.topics.length-1?'Terminar ruta':'Siguiente lección'} →</button></div>}</div></section><aside className="lesson-aside"><div className="panel mentor-mini"><img src={MEDIA+activeWaifuObj.image} alt={activeWaifuObj.name}/><div className="eyebrow">TU MENTORA</div><h3>{activeWaifuObj.name}</h3><p>"{feedback==='correct'?'¡Sabía que podías hacerlo!':feedback==='wrong'?'No te rindas, revisa el concepto y prueba otra vez.':'Una idea a la vez. ¡Tú puedes!'}"</p><button className="text-link" onClick={()=>navigate('waifus')}>Cambiar mentora ↗</button></div><div className="panel lesson-checklist"><h3>En esta lección</h3><div>✓ <span>Lee el concepto</span></div><div>◉ <span>Revisa el ejemplo</span></div><div>○ <span>Supera el checkpoint</span></div><small>Tu avance se guarda automáticamente.</small></div><div className="safety-note">🛡️ <span>En ciberseguridad, practica siempre en laboratorios propios o con permiso.</span></div></aside></div></div>}
   {page==='story'&&<div className="page-enter story-page"><div className="story-head"><div><div className="eyebrow">HACKLINGO ORIGINAL</div><h1>Neon <span className="gradient-text">Academy.</span></h1><p className="muted">Una novela visual donde cada decisión acompaña tu progreso.</p></div><div className="chapter-pill">CAPÍTULO 01 <span>◆</span></div></div><div className="visual-novel">
-    {/* FIX: Solo el video, sin PNG superpuesta */}
     <div className="vn-scene-bg">
       <video key={storyStep} className="scene-video" src={MEDIA+(storyStep%2===0?'Akari escenario.mp4':'Yuki escenario.mp4')} autoPlay muted loop playsInline onError={(e)=>{e.target.style.display='none'}}/>
       <div className="scene-grid"></div>
