@@ -1,0 +1,10 @@
+{
+  "name": "HackLingo Nova",
+  "short_name": "HackLingo",
+  "description": "Aprende programación y ciberseguridad junto a tus mentoras anime.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101018",
+  "theme_color": "#101018",
+  "icons": []
+}
