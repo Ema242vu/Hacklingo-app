@@ -32,6 +32,9 @@ jobs:
       - name: Init Capacitor
         run: npx cap init HackLingo com.hacklingo.app --web-dir=dist
 
+      - name: Remove old Android folder
+        run: rm -rf android
+
       - name: Create google-services.json
         run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
 
