@@ -1,6 +1,0 @@
-{
-  "appId": "com.hacklingo.app",
-  "appName": "HackLingo",
-  "webDir": "dist",
-  "bundledWebRuntime": false
-}

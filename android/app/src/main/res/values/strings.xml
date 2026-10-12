@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">HackLingo</string>
-    <string name="title_activity_main">HackLingo</string>
-    <string name="package_name">com.hacklingo.app</string>
-    <string name="custom_url_scheme">com.hacklingo.app</string>
-</resources>
