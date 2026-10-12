@@ -15,22 +15,22 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22 # Actualizado para quitar el warning
+          node-version: 22
 
       - name: Setup Java
-        uses: actions/setup-java@v5 # Actualizado para quitar el warning
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install Capacitor dependencies
+        run: npm install @capacitor/core @capacitor/cli @capacitor/android
 
       - name: Build Web App
         run: npm run build
 
-      - name: Install Capacitor CLI
-        run: npm install -g @capacitor/cli
+      - name: Init Capacitor
+        run: npx cap init HackLingo com.hacklingo.app --web-dir=dist
 
       - name: Add Android Platform
         run: npx cap add android
