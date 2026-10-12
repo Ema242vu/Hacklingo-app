@@ -32,8 +32,14 @@ jobs:
       - name: Init Capacitor
         run: npx cap init HackLingo com.hacklingo.app --web-dir=dist
 
+      - name: Create google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
+
       - name: Add Android Platform
         run: npx cap add android
+
+      - name: Copy google-services.json
+        run: cp google-services.json android/app/google-services.json
 
       - name: Sync Capacitor
         run: npx cap sync android
