@@ -1,5 +1,10 @@
 {
   "appId": "com.hacklingo.app",
-  "appName": "hacklingo",
-  "webDir": "dist"
+  "appName": "HackLingo Nova",
+  "webDir": "dist",
+  "plugins": {
+    "AdMob": {
+      "appId": "ca-app-pub-5959908767381687~7506133039"
+    }
+  }
 }
