@@ -1,4 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
+import { auth } from './firebase';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 
 const MEDIA='/media/gk/';
 const courses=[
@@ -39,7 +41,6 @@ const allLessons=Object.fromEntries(courses.map(c=>[c.id,c.topics.map((title,i)=
 const safeRead=(key,fallback)=>{try{const x=localStorage.getItem(key);return x?JSON.parse(x):fallback}catch{return fallback}};
 const safeWrite=(key,val)=>{try{localStorage.setItem(key,JSON.stringify(val))}catch{}};
 
-// Opciones de avatar (usando las imágenes combinadas que ya tienes)
 const avatarOptions=[
 {id:'base',label:'Base',img:'base.png'},
 {id:'p1',label:'Pelo 1',img:'base con pelo 1.png'},
@@ -60,6 +61,14 @@ const bannerOptions=[
 ];
 
 function App(){
+ // ========== FIREBASE STATES ==========
+ const [user,setUser]=useState(null);
+ const [email,setEmail]=useState('');
+ const [password,setPassword]=useState('');
+ const [isRegister,setIsRegister]=useState(false);
+ const [loadingAuth,setLoadingAuth]=useState(true);
+
+ // ========== ESTADOS EXISTENTES ==========
  const [page,setPage]=useState('home');
  const [progress,setProgress]=useState(()=>safeRead('hl_nova_progress',{xp:120,done:[],streak:3,lastDay:'',hearts:10,heartsAt:Date.now(),favorites:['akari'],answers:0,perfect:0}));
  const [activeCourse,setActiveCourse]=useState('python');
@@ -79,13 +88,21 @@ function App(){
  const [settings,setSettings]=useState(()=>safeRead('hl_nova_settings',{sound:true,reduceMotion:false,theme:'dark'}));
  const [name,setName]=useState(()=>safeRead('hl_nova_name','Senpai'));
  const [showProfile,setShowProfile]=useState(false);
- // NUEVOS ESTADOS PREMIUM
  const [isPremium,setIsPremium]=useState(()=>safeRead('hl_nova_premium',false));
  const [premiumUntil,setPremiumUntil]=useState(()=>safeRead('hl_nova_premium_until',0));
  const [codeInput,setCodeInput]=useState('');
- // NUEVO ESTADO AVATAR
  const [avatar,setAvatar]=useState(()=>safeRead('hl_nova_avatar',{look:'p1o1',banner:'playa'}));
 
+ // ========== FIREBASE AUTH EFFECT ==========
+ useEffect(()=>{
+   const unsubscribe = onAuthStateChanged(auth, (u)=>{
+     setUser(u);
+     setLoadingAuth(false);
+   });
+   return () => unsubscribe();
+ }, []);
+
+ // ========== EFFECTS EXISTENTES ==========
  useEffect(()=>{safeWrite('hl_nova_progress',progress)},[progress]);
  useEffect(()=>{safeWrite('hl_nova_settings',settings)},[settings]);
  useEffect(()=>{safeWrite('hl_nova_name',name)},[name]);
@@ -146,7 +163,6 @@ function App(){
    showToast('Misión diaria: +50 XP, +20 monedas y +10 corazones ❤️');
  }
  function toggleFavorite(id){setProgress(p=>({...p,favorites:p.favorites.includes(id)?p.favorites.filter(x=>x!==id):[...p.favorites,id]}))}
- // NUEVAS FUNCIONES PREMIUM
  function activatePremium(days){
    const until=Date.now()+(days*24*60*60*1000);
    setIsPremium(true);
@@ -163,6 +179,41 @@ function App(){
      showToast('Código inválido ❌');
    }
  }
+
+ // ========== FIREBASE AUTH FUNCTIONS ==========
+ const handleAuth = async (e) => {
+   e.preventDefault();
+   if(!email || !password){
+     showToast('Completa todos los campos');
+     return;
+   }
+   try {
+     if(isRegister){
+       await createUserWithEmailAndPassword(auth, email, password);
+       showToast('¡Cuenta creada! Bienvenido a HackLingo');
+     } else {
+       await signInWithEmailAndPassword(auth, email, password);
+       showToast('¡Sesión iniciada!');
+     }
+   } catch (error) {
+     let msg = error.message;
+     if(msg.includes('email-already-in-use')) msg = 'Ese correo ya está registrado';
+     else if(msg.includes('invalid-credential') || msg.includes('wrong-password')) msg = 'Correo o contraseña incorrectos';
+     else if(msg.includes('weak-password')) msg = 'La contraseña debe tener al menos 6 caracteres';
+     else if(msg.includes('invalid-email')) msg = 'Correo electrónico inválido';
+     showToast('Error: ' + msg);
+   }
+ };
+
+ const handleLogout = async () => {
+   try {
+     await signOut(auth);
+     showToast('Sesión cerrada');
+   } catch (error) {
+     showToast('Error al cerrar sesión');
+   }
+ };
+
  const filteredCourses=courses.filter(c=>(c.name+' '+c.desc+' '+c.short).toLowerCase().includes(search.toLowerCase())&&(tab==='Todos'||(tab==='En progreso'&&c.topics.some((_,i)=>completed.has(c.id+'-'+i)))||(tab==='Sin empezar'&&!c.topics.some((_,i)=>completed.has(c.id+'-'+i)))));
  const scenes=[
   {who:'Akari',img:'wf1 f feliz.png',place:'Laboratorio de neón',text:`¡Senpai, llegaste justo a tiempo! El servidor de la academia tiene un reto nuevo. Si resolvemos el primer desafío, desbloquearemos el siguiente capítulo. ¿Listo?`,choices:[['¡Vamos a resolverlo!','brave'],['Primero quiero revisar mis notas','calm']]},
@@ -176,6 +227,72 @@ function App(){
  const activeWaifuObj=waifus.find(w=>w.id===activeWaifu)||waifus[0];
  const avatarLook=avatarOptions.find(a=>a.id===avatar.look)||avatarOptions[0];
  const avatarBanner=bannerOptions.find(b=>b.id===avatar.banner)||bannerOptions[0];
+
+ // ========== PANTALLA DE CARGA ==========
+ if(loadingAuth){
+   return <div className="app" style={{display:'grid',placeItems:'center',height:'100vh'}}>
+     <div style={{textAlign:'center'}}>
+       <div className="brand-mark" style={{margin:'0 auto 15px',width:'50px',height:'50px',fontSize:'28px'}}>H<span>✦</span></div>
+       <h1 style={{fontFamily:'Space Grotesk'}}>HackLingo Nova</h1>
+       <p style={{color:'#9392a8',marginTop:'8px'}}>Cargando...</p>
+     </div>
+   </div>;
+ }
+
+ // ========== PANTALLA DE LOGIN ==========
+ if(!user){
+   return (
+     <div className="app" style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',padding:'20px'}}>
+       <div className="panel" style={{maxWidth:'420px',width:'100%',padding:'35px 30px'}}>
+         <div className="brand" style={{justifyContent:'center',marginBottom:'25px'}}>
+           <div className="brand-mark">H<span>✦</span></div>
+           <div><b>HACKLINGO</b><small>NOVA ACADEMY</small></div>
+         </div>
+         <h2 style={{textAlign:'center',marginBottom:'8px',fontFamily:'Space Grotesk',fontSize:'24px'}}>{isRegister ? 'Crear cuenta' : 'Iniciar sesión'}</h2>
+         <p style={{textAlign:'center',color:'#9392a8',fontSize:'11px',marginBottom:'25px'}}>
+           {isRegister ? 'Únete a la academia y empieza a aprender' : 'Bienvenido de vuelta, aprendiz'}
+         </p>
+         <form onSubmit={handleAuth} style={{display:'grid',gap:'12px'}}>
+           <div>
+             <label style={{fontSize:'10px',color:'#a79bbf',display:'block',marginBottom:'6px',letterSpacing:'1px',fontWeight:700}}>CORREO ELECTRÓNICO</label>
+             <input 
+               type="email" 
+               placeholder="tu@correo.com" 
+               value={email} 
+               onChange={e=>setEmail(e.target.value)} 
+               required 
+               style={{width:'100%',padding:'13px 14px',borderRadius:'10px',border:'1px solid #39364a',background:'#11111a',color:'#fff',fontSize:'12px',outline:'none'}}
+             />
+           </div>
+           <div>
+             <label style={{fontSize:'10px',color:'#a79bbf',display:'block',marginBottom:'6px',letterSpacing:'1px',fontWeight:700}}>CONTRASEÑA</label>
+             <input 
+               type="password" 
+               placeholder="Mínimo 6 caracteres" 
+               value={password} 
+               onChange={e=>setPassword(e.target.value)} 
+               required 
+               style={{width:'100%',padding:'13px 14px',borderRadius:'10px',border:'1px solid #39364a',background:'#11111a',color:'#fff',fontSize:'12px',outline:'none'}}
+             />
+           </div>
+           <button type="submit" className="btn primary" style={{padding:'14px',marginTop:'10px',fontSize:'12px'}}>
+             {isRegister ? 'Crear cuenta' : 'Iniciar sesión'} →
+           </button>
+         </form>
+         <button onClick={()=>setIsRegister(!isRegister)} className="text-link" style={{display:'block',margin:'18px auto 0',textAlign:'center',fontSize:'11px'}}>
+           {isRegister ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? Regístrate gratis'}
+         </button>
+         <div style={{marginTop:'25px',padding:'12px',background:'#1b1b28',borderRadius:'10px',border:'1px solid #2b2a3b'}}>
+           <p style={{fontSize:'9px',color:'#7e7b92',lineHeight:'1.6',margin:0,textAlign:'center'}}>
+             🔒 Tus datos se guardan de forma segura en Firebase
+           </p>
+         </div>
+       </div>
+     </div>
+   );
+ }
+
+ // ========== APP PRINCIPAL (usuario logueado) ==========
  return <div className={`app ${settings.theme==='light'?'light':''} ${settings.reduceMotion?'reduce-motion':''}`}>
  <aside className="sidebar">
   <div className="brand"><div className="brand-mark">H<span>✦</span></div><div><b>HACKLINGO</b><small>NOVA ACADEMY</small></div></div>
@@ -207,10 +324,18 @@ function App(){
   {page==='practice'&&<div className="page-enter"><div className="page-title-row"><div><div className="eyebrow">ENTRENAMIENTO RÁPIDO</div><h1>Zona de <span className="gradient-text">práctica.</span></h1><p className="muted">Sesiones cortas para consolidar conceptos sin presión.</p></div><div className="practice-score"><span>⚡</span><b>{progress.xp} XP</b></div></div><div className="practice-grid"><button className="practice-card" onClick={()=>{setFlashIndex(0);setFlashFlip(false);navigate('flashcards')}}><div className="practice-icon purple">▣</div><span className="practice-label">MEMORIA ACTIVA</span><h2>Tarjetas de estudio</h2><p>Repasa términos clave y ejemplos breves.</p><div className="practice-card-foot"><span>5 tarjetas iniciales</span><b>→</b></div></button><button className="practice-card" onClick={()=>startLesson('python',Math.floor(Math.random()*courses[0].topics.length))}><div className="practice-icon mint">⚡</div><span className="practice-label">RETO ALEATORIO</span><h2>Un reto sorpresa</h2><p>Salta a una lección para practicar algo nuevo.</p><div className="practice-card-foot"><span>+25 XP al acertar</span><b>→</b></div></button><button className="practice-card" onClick={()=>navigate('courses')}><div className="practice-icon orange">⌘</div><span className="practice-label">LABORATORIO</span><h2>Entrena tus bases</h2><p>Elige un módulo y practica paso a paso.</p><div className="practice-card-foot"><span>80 lecciones disponibles</span><b>→</b></div></button><button className="practice-card" onClick={()=>{setActiveWaifu('yuki');navigate('waifus')}}><div className="practice-icon pink">♡</div><span className="practice-label">PAUSA CON COMPAÑÍA</span><h2>Visita a las mentoras</h2><p>Conoce personajes y cambia el ánimo de estudio.</p><div className="practice-card-foot"><span>4 compañeras</span><b>→</b></div></button></div><div className="panel practice-reminder"><span>🛡️</span><div><b>Regla de oro del laboratorio</b><p>En los módulos de ciberseguridad, trabaja en entornos propios, CTF o laboratorios con autorización. El aprendizaje responsable también es una habilidad.</p></div></div></div>}
   {page==='flashcards'&&<div className="page-enter flash-page"><button className="back-link" onClick={()=>navigate('practice')}>← Volver a práctica</button><div className="center-title"><div className="eyebrow">MEMORIA ACTIVA</div><h1>Flashcards <span className="gradient-text">lab.</span></h1><p className="muted">Toca la tarjeta para revelar la respuesta.</p></div><button className={'flashcard '+(flashFlip?'flipped':'')} onClick={()=>setFlashFlip(!flashFlip)}><span className="flash-count">{flashIndex+1} / {flashcards.length}</span><span className="flash-icon">{flashFlip?'✧':'▤'}</span><span className="flash-label">{flashFlip?'RESPUESTA':'CONCEPTO'}</span><strong>{flashFlip?flashcards[flashIndex][1]:flashcards[flashIndex][0]}</strong><code>{flashFlip?flashcards[flashIndex][2]:'Toca para voltear ↻'}</code></button><div className="flash-controls"><button className="btn ghost" onClick={()=>{setFlashIndex(i=>(i-1+flashcards.length)%flashcards.length);setFlashFlip(false)}}>← Anterior</button><button className="btn primary" onClick={()=>{setFlashIndex(i=>(i+1)%flashcards.length);setFlashFlip(false)}}>Siguiente →</button></div></div>}
   {page==='waifus'&&<div className="page-enter"><div className="page-title-row"><div><div className="eyebrow">TU EQUIPO DE APOYO</div><h1>Conoce a tus <span className="gradient-text">mentoras.</span></h1><p className="muted">Cada una tiene una personalidad y una forma distinta de acompañar tu aprendizaje.</p></div><div className="collection-pill">♡ {progress.favorites.length} favoritas</div></div><div className="waifu-grid">{waifus.map(w=>{let chosen=activeWaifu===w.id;const locked=w.premium&&!isPremium;return <article key={w.id} className={'waifu-card '+(chosen?'waifu-selected':'')+(locked?' waifu-locked':'')} style={{'--waifu':w.color}}><div className="waifu-art"><div className="waifu-halo"></div><img src={MEDIA+w.image} alt={w.name}/><span className="rarity">{w.rarity}</span>{w.premium&&<span className="premium-tag">👑 PREMIUM</span>}<button className={'favorite-btn '+(progress.favorites.includes(w.id)?'favorited':'')} onClick={()=>toggleFavorite(w.id)} aria-label="Favorito">{progress.favorites.includes(w.id)?'♥':'♡'}</button></div><div className="waifu-info"><span className="waifu-role">{w.role}</span><h2>{w.name}</h2><p>{w.bio}</p><blockquote>"{w.quote}"</blockquote><div className="waifu-actions"><button className="btn primary small-btn" onClick={()=>{if(locked){showToast('Esta mentora es Premium. Activa tu membresía 👑');return;}setActiveWaifu(w.id);showToast(`${w.name} será tu mentora seleccionada`)}}>{chosen?'✓ Seleccionada':(locked?'🔒 Premium':'Elegir mentora')}</button><button className="btn ghost small-btn" onClick={()=>{if(locked){showToast('Necesitas Premium para estudiar con ella 👑');return;}setActiveWaifu(w.id);navigate('lesson')}}>Estudiar juntas ↗</button></div></div></article>})}</div><div className="panel waifu-note"><span>✦</span><div><b>Un equipo que crece contigo</b><p>Las mentoras son compañeras narrativas. Las funciones de progreso y estudio trabajan sin necesidad de conexión a un servicio de chat externo.</p></div></div></div>}
-  {page==='profile'&&<div className="page-enter profile-page"><div className="page-title-row"><div><div className="eyebrow">TU IDENTIDAD</div><h1>Mi <span className="gradient-text">perfil.</span></h1><p className="muted">Personaliza tu experiencia y revisa tu progreso.</p></div></div><div className="profile-layout"><section className="panel profile-main"><div className="profile-cover" style={{backgroundImage:`url(${MEDIA+avatarBanner.img})`,backgroundSize:'cover',backgroundPosition:'center'}}><div className="profile-avatar" style={{backgroundImage:`url(${MEDIA+avatarLook.img})`,backgroundSize:'cover',backgroundPosition:'center'}}/><div className="profile-level">{isPremium?'👑 PREMIUM':'NIVEL '+(Math.floor(progress.xp/100)+1)}</div></div><div className="profile-form"><label htmlFor="playername">Nombre de aprendiz</label><div className="name-edit"><input id="playername" value={name} maxLength={24} onChange={e=>setName(e.target.value)} placeholder="Tu nombre"/><span>{name.length}/24</span></div><p className="muted tiny">Tu nombre se guarda automáticamente en este dispositivo.</p><div className="profile-stats"><div><b>{progress.xp}</b><small>XP TOTAL</small></div><div><b>{completed.size}</b><small>LECCIONES</small></div><div><b>{isPremium?'∞':progress.hearts}</b><small>CORAZONES</small></div></div></div></section><section className="panel settings-panel"><div className="section-heading compact"><div><div className="eyebrow">PREFERENCIAS</div><h2>Configuración</h2></div><span>⚙</span></div><div className="setting-row"><div><b>Tema claro</b><small>Cambia la apariencia general.</small></div><button className={'toggle '+(settings.theme==='light'?'on':'')} onClick={()=>setSettings(s=>({...s,theme:s.theme==='light'?'dark':'light'}))}><i/></button></div><div className="setting-row"><div><b>Reducir animaciones</b><small>Movimiento más discreto.</small></div><button className={'toggle '+(settings.reduceMotion?'on':'')} onClick={()=>setSettings(s=>({...s,reduceMotion:!s.reduceMotion}))}><i/></button></div><div className="setting-row"><div><b>Efectos de sonido</b><small>Preferencia guardada para futuras versiones.</small></div><button className={'toggle '+(settings.sound?'on':'')} onClick={()=>setSettings(s=>({...s,sound:!s.sound}))}><i/></button></div><button className="btn ghost reset-btn" onClick={()=>{if(confirm('¿Reiniciar el progreso de este dispositivo? Esta acción no se puede deshacer.')){setProgress({xp:0,done:[],streak:0,lastDay:'',hearts:10,heartsAt:Date.now(),coins:0,favorites:[],answers:0,perfect:0});showToast('Progreso reiniciado')}}}>Reiniciar progreso local</button></section></div>
-  {/* SECCIÓN AVATAR */}
+  {page==='profile'&&<div className="page-enter profile-page"><div className="page-title-row"><div><div className="eyebrow">TU IDENTIDAD</div><h1>Mi <span className="gradient-text">perfil.</span></h1><p className="muted">Personaliza tu experiencia y revisa tu progreso.</p></div></div>
+  {/* INFO DE USUARIO FIREBASE */}
+  <div className="panel" style={{padding:'15px 20px',marginBottom:'15px',display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
+    <span style={{fontSize:'20px'}}>📧</span>
+    <div style={{flex:1,minWidth:'150px'}}>
+      <b style={{fontSize:'11px',display:'block'}}>Sesión activa</b>
+      <small style={{fontSize:'10px',color:'#9392a8'}}>{user.email}</small>
+    </div>
+    <button className="btn ghost small-btn" onClick={handleLogout} style={{color:'#f0a5b8',borderColor:'#674052'}}>Cerrar sesión</button>
+  </div>
+  <div className="profile-layout"><section className="panel profile-main"><div className="profile-cover" style={{backgroundImage:`url(${MEDIA+avatarBanner.img})`,backgroundSize:'cover',backgroundPosition:'center'}}><div className="profile-avatar" style={{backgroundImage:`url(${MEDIA+avatarLook.img})`,backgroundSize:'cover',backgroundPosition:'center'}}/><div className="profile-level">{isPremium?'👑 PREMIUM':'NIVEL '+(Math.floor(progress.xp/100)+1)}</div></div><div className="profile-form"><label htmlFor="playername">Nombre de aprendiz</label><div className="name-edit"><input id="playername" value={name} maxLength={24} onChange={e=>setName(e.target.value)} placeholder="Tu nombre"/><span>{name.length}/24</span></div><p className="muted tiny">Tu nombre se guarda automáticamente en este dispositivo.</p><div className="profile-stats"><div><b>{progress.xp}</b><small>XP TOTAL</small></div><div><b>{completed.size}</b><small>LECCIONES</small></div><div><b>{isPremium?'∞':progress.hearts}</b><small>CORAZONES</small></div></div></div></section><section className="panel settings-panel"><div className="section-heading compact"><div><div className="eyebrow">PREFERENCIAS</div><h2>Configuración</h2></div><span>⚙</span></div><div className="setting-row"><div><b>Tema claro</b><small>Cambia la apariencia general.</small></div><button className={'toggle '+(settings.theme==='light'?'on':'')} onClick={()=>setSettings(s=>({...s,theme:s.theme==='light'?'dark':'light'}))}><i/></button></div><div className="setting-row"><div><b>Reducir animaciones</b><small>Movimiento más discreto.</small></div><button className={'toggle '+(settings.reduceMotion?'on':'')} onClick={()=>setSettings(s=>({...s,reduceMotion:!s.reduceMotion}))}><i/></button></div><div className="setting-row"><div><b>Efectos de sonido</b><small>Preferencia guardada para futuras versiones.</small></div><button className={'toggle '+(settings.sound?'on':'')} onClick={()=>setSettings(s=>({...s,sound:!s.sound}))}><i/></button></div><button className="btn ghost reset-btn" onClick={()=>{if(confirm('¿Reiniciar el progreso de este dispositivo? Esta acción no se puede deshacer.')){setProgress({xp:0,done:[],streak:0,lastDay:'',hearts:10,heartsAt:Date.now(),coins:0,favorites:[],answers:0,perfect:0});showToast('Progreso reiniciado')}}}>Reiniciar progreso local</button><button className="btn ghost reset-btn" onClick={handleLogout} style={{color:'#f0a5b8',borderColor:'#674052',marginTop:'10px'}}>Cerrar sesión</button></section></div>
   <div className="panel avatar-panel"><div className="section-heading compact"><div><div className="eyebrow">PERSONALIZACIÓN</div><h2>Tu avatar</h2></div><span>✦</span></div><div className="avatar-editor"><div className="avatar-preview"><img src={MEDIA+avatarBanner.img} alt="Banner" className="avatar-banner"/><img src={MEDIA+avatarLook.img} alt="Avatar" className="avatar-base"/></div><div className="avatar-controls"><div><b>Apariencia</b><div className="avatar-options">{avatarOptions.map(a=><button key={a.id} className={'avatar-opt '+(avatar.look===a.id?'active':'')} onClick={()=>setAvatar(v=>({...v,look:a.id}))}>{a.label}</button>)}</div></div><div><b>Fondo</b><div className="avatar-options">{bannerOptions.map(b=><button key={b.id} className={'avatar-opt '+(avatar.banner===b.id?'active':'')} onClick={()=>setAvatar(v=>({...v,banner:b.id}))}>{b.label}</button>)}</div></div></div></div></div>
-  {/* SECCIÓN PREMIUM */}
   <div className="panel premium-panel"><div className="section-heading compact"><div><div className="eyebrow">MEMBRESÍA</div><h2>HackLingo Premium</h2></div><span>👑</span></div>{isPremium?<div className="premium-active"><b>¡Eres Premium! 🎉</b><p>Corazones infinitos, acceso a todas las mentoras y ventajas exclusivas.</p><small>Vence: {new Date(premiumUntil).toLocaleDateString()}</small></div>:<div className="premium-offer"><p>Activa Premium y desbloquea:</p><ul><li>❤️ Corazones infinitos</li><li>👑 Akari Prime y Yuki Shadow</li><li>⚡ Sin límites de práctica</li></ul><div className="code-redeem"><input type="text" placeholder="Ingresa tu código" value={codeInput} onChange={e=>setCodeInput(e.target.value)} maxLength={20}/><button className="btn primary small-btn" onClick={redeemCode}>Canjear</button></div><small>Códigos de prueba: NOVA7 (7 días), NOVA30 (30 días), NOVA60 (60 días)</small></div>}</div>
   <div className="panel data-note"><span>🔒</span><div><b>Privacidad y guardado local</b><p>Tu progreso, favoritos y preferencias se guardan en el almacenamiento local de este navegador. No se envían a un servidor en esta versión.</p></div></div></div>}
   </div>
